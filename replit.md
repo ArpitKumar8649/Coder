@@ -18,7 +18,7 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 ## Current Configuration (October 2025)
 
 ✅ **API Keys**: Configured in Replit Secrets
-✅ **OpenRouter Model**: Using `x-ai/grok-4-fast:free` for all AI operations (completely free!)
+✅ **OpenRouter Model**: Using `meta-llama/llama-3.3-70b-instruct:free` for all AI operations (completely free!)
 ✅ **Frontend**: Running on port 5000 with HMR enabled
 ✅ **Backend**: Running on port 3002
 ✅ **MCP Server**: Active on port 3000

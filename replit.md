@@ -11,10 +11,19 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 ## Tech Stack
 
 - **Groq SDK**: Fast, free conversational AI (llama-3.3-70b-versatile)
-- **OpenRouter**: Specialized model routing for tasks
+- **OpenRouter**: Free model routing for tasks (x-ai/grok-beta:free)
 - **MCP Tools**: Code generation via vibe-coder-mcp
 - **React**: Chat interface with streaming responses
 - **Express**: Backend API server
+
+## Current Configuration (October 2025)
+
+✅ **API Keys**: Configured in Replit Secrets
+✅ **OpenRouter Model**: Using `x-ai/grok-beta:free` (completely free!)
+✅ **Groq Model**: Using `llama-3.3-70b-versatile` (free tier)
+✅ **Frontend**: Running on port 5000 with HMR enabled
+✅ **Backend**: Running on port 3002
+✅ **MCP Server**: Active on port 3000
 
 ## Required API Keys
 
@@ -78,7 +87,10 @@ The backend automatically reads these from the environment.
 
 ## Cost Estimate
 
-Typical website generation costs ~$0.07 (OpenRouter only, Groq is free!)
+**Current Setup: 100% FREE!** 🎉
+- Groq: Free tier
+- OpenRouter: Using free model (x-ai/grok-beta:free)
+- Total cost per website generation: $0.00
 
 ## How It Works
 
@@ -92,5 +104,26 @@ Typical website generation costs ~$0.07 (OpenRouter only, Groq is free!)
 
 The frontend is configured to work with Replit's proxy system:
 - Vite server binds to `0.0.0.0:5000`
-- Backend API runs on `localhost:3002`
-- Allows all hosts for Replit iframe preview
+- Backend API runs on port 3002
+- Allows `.replit.dev` and `.repl.co` hosts for Replit iframe preview
+- HMR configured with WSS protocol for live reloading
+
+## Deployment
+
+Configured for VM deployment:
+- **Build**: `npm run build --prefix frontend`
+- **Run**: `node backend/server.js`
+- Production mode serves the built frontend from the backend
+
+## How to Use
+
+1. Open the application in the Replit preview
+2. Type your website idea in the chat (e.g., "make an amazon clone")
+3. The AI will ask clarifying questions - answer them in the chat
+4. The system will:
+   - Research best practices
+   - Generate a PRD (Product Requirements Document)
+   - Create user stories
+   - Generate task lists
+   - Build complete full-stack code
+5. Generated code will be saved to `generated-projects/` directory

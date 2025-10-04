@@ -9,12 +9,7 @@ export default defineConfig({
     strictPort: true,
     allowedHosts: ['.replit.dev', '.repl.co'],
     hmr: {
-      protocol: 'wss',
-      host: process.env.REPLIT_DEV_DOMAIN || 'localhost',
-      clientPort: 443
-    },
-    watch: {
-      usePolling: false
+      overlay: false
     }
   },
   preview: {

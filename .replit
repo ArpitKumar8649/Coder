@@ -60,7 +60,11 @@ externalPort = 80
 localPort = 44301
 externalPort = 3001
 
+[[ports]]
+localPort = 46465
+externalPort = 3003
+
 [deployment]
-deploymentTarget = "autoscale"
-run = ["bash", "-c", "cd backend && NODE_ENV=production node server.js"]
-build = ["bash", "-c", "cd frontend && npm install && npm run build && cd ../backend && npm install"]
+deploymentTarget = "vm"
+run = ["node", "backend/server.js"]
+build = ["npm", "run", "build", "--prefix", "frontend"]

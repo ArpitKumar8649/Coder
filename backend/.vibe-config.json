@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "setupDate": "2025-10-04T08:35:18.240Z",
+  "setupDate": "2025-10-04T08:48:56.474Z",
   "unified": {
     "enabled": false
   },
@@ -13,7 +13,7 @@
     "mode": "strict"
   },
   "models": {
-    "gemini": "google/gemini-2.5-flash-preview-05-20",
+    "gemini": "x-ai/grok-beta:free",
     "perplexity": "perplexity/sonar"
   },
   "api": {

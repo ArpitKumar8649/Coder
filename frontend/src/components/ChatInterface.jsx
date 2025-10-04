@@ -13,6 +13,7 @@ function ChatInterface() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [toolStatus, setToolStatus] = useState('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -58,9 +59,21 @@ function ChatInterface() {
             return newMessages;
           });
         },
+        (toolCall) => {
+          const toolNames = {
+            'research_best_practices': '🔍 Researching best practices...',
+            'generate_prd': '📋 Generating Product Requirements Document...',
+            'generate_user_stories': '📝 Creating user stories...',
+            'generate_task_list': '✅ Generating development tasks...',
+            'generate_website_code': '💻 Generating complete website code...'
+          };
+          const toolName = toolCall.tools[0]?.function?.name;
+          setToolStatus(toolNames[toolName] || '⚙️ Processing...');
+        },
         () => {
           setIsLoading(false);
           setIsTyping(false);
+          setToolStatus('');
         },
         (error) => {
           console.error('Stream error:', error);
@@ -71,6 +84,7 @@ function ChatInterface() {
           });
           setIsLoading(false);
           setIsTyping(false);
+          setToolStatus('');
         }
       );
     } catch (error) {
@@ -151,11 +165,18 @@ function ChatInterface() {
           <div className="message assistant">
             <div className="message-avatar">🤖</div>
             <div className="message-content">
-              <div className="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
+              {toolStatus ? (
+                <div className="tool-status">
+                  <div className="tool-status-text">{toolStatus}</div>
+                  <div className="loading-spinner"></div>
+                </div>
+              ) : (
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              )}
             </div>
           </div>
         )}

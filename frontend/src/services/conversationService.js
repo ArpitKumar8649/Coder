@@ -35,7 +35,7 @@ class ConversationService {
     }
   }
 
-  async streamMessage(message, onChunk, onComplete, onError) {
+  async streamMessage(message, onChunk, onToolCall, onComplete, onError) {
     try {
       const response = await fetch(`${API_BASE_URL}/conversation/chat/stream`, {
         method: 'POST',
@@ -64,6 +64,8 @@ class ConversationService {
             
             if (data.type === 'content') {
               onChunk(data.content);
+            } else if (data.type === 'tool_call') {
+              onToolCall(data);
             } else if (data.type === 'done') {
               onComplete();
             } else if (data.type === 'error') {

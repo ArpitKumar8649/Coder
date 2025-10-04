@@ -115,38 +115,102 @@ export const conversationController = {
         content: message
       });
 
-      const stream = await groqService.streamChat(conversationHistory);
+      console.log(`\n💬 User [${session}]: ${message}`);
 
-      let accumulatedContent = '';
-      let accumulatedToolCalls = [];
+      let continueLoop = true;
+      
+      while (continueLoop) {
+        const stream = await groqService.streamChat(conversationHistory);
 
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta;
+        let accumulatedContent = '';
+        let accumulatedToolCalls = [];
+        let finishReason = null;
 
-        if (delta?.content) {
-          accumulatedContent += delta.content;
-          res.write(`data: ${JSON.stringify({ 
-            type: 'content', 
-            content: delta.content 
-          })}\n\n`);
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+          finishReason = chunk.choices[0]?.finish_reason;
+
+          if (delta?.content) {
+            accumulatedContent += delta.content;
+            res.write(`data: ${JSON.stringify({ 
+              type: 'content', 
+              content: delta.content 
+            })}\n\n`);
+          }
+
+          if (delta?.tool_calls) {
+            for (const toolCallDelta of delta.tool_calls) {
+              if (!accumulatedToolCalls[toolCallDelta.index]) {
+                accumulatedToolCalls[toolCallDelta.index] = {
+                  id: toolCallDelta.id,
+                  type: 'function',
+                  function: { name: '', arguments: '' }
+                };
+              }
+              
+              if (toolCallDelta.function?.name) {
+                accumulatedToolCalls[toolCallDelta.index].function.name += toolCallDelta.function.name;
+              }
+              if (toolCallDelta.function?.arguments) {
+                accumulatedToolCalls[toolCallDelta.index].function.arguments += toolCallDelta.function.arguments;
+              }
+            }
+          }
         }
 
-        if (delta?.tool_calls) {
-          accumulatedToolCalls.push(...delta.tool_calls);
-        }
+        if (finishReason === 'tool_calls' && accumulatedToolCalls.length > 0) {
+          const assistantMessage = {
+            role: 'assistant',
+            content: accumulatedContent || null,
+            tool_calls: accumulatedToolCalls
+          };
+          
+          conversationHistory.push(assistantMessage);
 
-        if (chunk.choices[0]?.finish_reason === 'tool_calls') {
           res.write(`data: ${JSON.stringify({ 
             type: 'tool_call', 
             tools: accumulatedToolCalls 
           })}\n\n`);
+
+          console.log(`\n🔧 Groq wants to use ${accumulatedToolCalls.length} tool(s)`);
+
+          for (const toolCall of accumulatedToolCalls) {
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments);
+
+            console.log(`\n⚙️  Executing: ${toolName}`);
+            console.log(`   Arguments:`, toolArgs);
+
+            let toolResult;
+
+            try {
+              toolResult = await conversationController.executeToolCall(toolName, toolArgs);
+              console.log(`✅ Tool completed successfully`);
+            } catch (error) {
+              console.error(`❌ Tool execution failed:`, error.message);
+              toolResult = {
+                error: error.message,
+                success: false
+              };
+            }
+
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(toolResult)
+            });
+          }
+
+        } else {
+          conversationHistory.push({
+            role: 'assistant',
+            content: accumulatedContent
+          });
+          
+          console.log(`\n🤖 Assistant: ${accumulatedContent}\n`);
+          continueLoop = false;
         }
       }
-
-      conversationHistory.push({
-        role: 'assistant',
-        content: accumulatedContent
-      });
 
       conversationSessions.set(session, conversationHistory);
 

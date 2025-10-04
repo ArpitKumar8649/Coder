@@ -13,11 +13,11 @@ class MCPService {
     this.isReady = false;
     
     this.modelConfig = {
-      research: process.env.RESEARCH_MODEL || 'perplexity/sonar-pro',
-      prd: process.env.PRD_MODEL || 'anthropic/claude-3.5-sonnet',
-      userStories: process.env.USER_STORIES_MODEL || 'anthropic/claude-3.5-sonnet',
-      taskList: process.env.TASK_LIST_MODEL || 'google/gemini-2.5-flash-preview-05-20',
-      codeGeneration: process.env.CODE_GENERATION_MODEL || 'google/gemini-2.5-flash-preview-05-20'
+      research: process.env.RESEARCH_MODEL || 'x-ai/grok-beta:free',
+      prd: process.env.PRD_MODEL || 'x-ai/grok-beta:free',
+      userStories: process.env.USER_STORIES_MODEL || 'x-ai/grok-beta:free',
+      taskList: process.env.TASK_LIST_MODEL || 'x-ai/grok-beta:free',
+      codeGeneration: process.env.CODE_GENERATION_MODEL || 'x-ai/grok-beta:free'
     };
   }
 

@@ -1,17 +1,6 @@
 import axios from 'axios';
 
-const getBackendURL = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (import.meta.env.PROD) return '/api';
-  
-  const hostname = window.location.hostname;
-  if (hostname.includes('replit.dev')) {
-    return `https://${hostname.replace('-00-', '-01-')}/api`;
-  }
-  return 'http://localhost:3002/api';
-};
-
-const API_BASE_URL = getBackendURL();
+const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : `${window.location.protocol}//${window.location.hostname}:3002/api`);
 
 class ConversationService {
   constructor() {

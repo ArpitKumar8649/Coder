@@ -76,4 +76,4 @@ externalPort = 3001
 [deployment]
 deploymentTarget = "vm"
 run = ["node", "backend/server.js"]
-build = ["npm", "run", "build", "--prefix", "frontend"]
+build = ["bash", "-c", "cd frontend && npm run build"]

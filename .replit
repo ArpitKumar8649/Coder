@@ -48,6 +48,10 @@ outputType = "webview"
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 34605
+externalPort = 3000
+
 [deployment]
 deploymentTarget = "vm"
 run = ["bash", "-c", "cd backend && NODE_ENV=production node server.js"]

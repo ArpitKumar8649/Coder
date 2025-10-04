@@ -1,13 +1,18 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import conversationRoutes from './routes/conversation.js';
 import mcpService from './services/mcpService.js';
 
 dotenv.config();
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || (process.env.NODE_ENV === 'production' ? 5000 : 3002);
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || '*',
@@ -16,6 +21,17 @@ app.use(cors({
 app.use(express.json());
 
 app.use('/api/conversation', conversationRoutes);
+
+if (process.env.NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '../frontend/dist');
+  app.use(express.static(frontendPath));
+  
+  app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    }
+  });
+}
 
 app.get('/health', (req, res) => {
   res.json({ 
@@ -64,7 +80,8 @@ async function startServer() {
     console.error('   The server will continue, but tool execution will not work.');
   }
 
-  app.listen(PORT, 'localhost', () => {
+  const host = process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost';
+  app.listen(PORT, host, () => {
     console.log(`\n✅ Backend server running on http://localhost:${PORT}`);
     if (mcpService.isReady) {
       console.log(`✅ MCP Server ready with OpenRouter`);

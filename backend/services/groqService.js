@@ -3,7 +3,7 @@ import Groq from 'groq-sdk';
 class GroqService {
   constructor() {
     this.client = null;
-    this.model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    this.model = process.env.GROQ_MODEL || 'qwen/qwen3-32b';
     
     this.tools = [
       {
@@ -124,8 +124,10 @@ class GroqService {
         messages: messages,
         tools: tools,
         tool_choice: 'auto',
-        temperature: 0.7,
-        max_tokens: 2048
+        temperature: 0.6,
+        max_completion_tokens: 4096,
+        top_p: 0.95,
+        reasoning_effort: 'none'
       });
 
       return response;
@@ -143,8 +145,10 @@ class GroqService {
         messages: messages,
         tools: tools,
         tool_choice: 'auto',
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: 0.6,
+        max_completion_tokens: 4096,
+        top_p: 0.95,
+        reasoning_effort: 'none',
         stream: true
       });
 

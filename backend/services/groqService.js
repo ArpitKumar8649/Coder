@@ -2,9 +2,7 @@ import Groq from 'groq-sdk';
 
 class GroqService {
   constructor() {
-    this.client = new Groq({
-      apiKey: process.env.GROQ_API_KEY
-    });
+    this.client = null;
     this.model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
     
     this.tools = [
@@ -106,9 +104,22 @@ class GroqService {
     ];
   }
 
+  getClient() {
+    if (!this.client) {
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error('GROQ_API_KEY is not set. Please add it to backend/.env or Replit Secrets.');
+      }
+      this.client = new Groq({
+        apiKey: process.env.GROQ_API_KEY
+      });
+    }
+    return this.client;
+  }
+
   async chat(messages, tools = this.tools) {
     try {
-      const response = await this.client.chat.completions.create({
+      const client = this.getClient();
+      const response = await client.chat.completions.create({
         model: this.model,
         messages: messages,
         tools: tools,
@@ -126,7 +137,8 @@ class GroqService {
 
   async streamChat(messages, tools = this.tools) {
     try {
-      const stream = await this.client.chat.completions.create({
+      const client = this.getClient();
+      const stream = await client.chat.completions.create({
         model: this.model,
         messages: messages,
         tools: tools,

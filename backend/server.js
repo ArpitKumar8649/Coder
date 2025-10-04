@@ -40,26 +40,49 @@ app.get('/', (req, res) => {
 });
 
 async function startServer() {
-  try {
-    console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
-    console.log('🚀 Starting MCP Server...');
-    
-    await mcpService.startServer();
-
-    app.listen(PORT, 'localhost', () => {
-      console.log(`\n✅ Backend server running on http://localhost:${PORT}`);
-      console.log(`✅ MCP Server ready with OpenRouter`);
-      console.log(`✅ Groq conversational AI active`);
-      console.log(`\nAPI Endpoints:`);
-      console.log(`  POST /api/conversation/chat`);
-      console.log(`  POST /api/conversation/chat/stream`);
-      console.log(`  GET  /api/conversation/history/:sessionId`);
-      console.log(`  GET  /health\n`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+  console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
+  
+  if (!process.env.GROQ_API_KEY) {
+    console.warn('⚠️  Warning: GROQ_API_KEY not set. Conversational features will not work.');
+    console.warn('   Get your free API key at: https://console.groq.com/');
   }
+  
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn('⚠️  Warning: OPENROUTER_API_KEY not set. Tool execution will not work.');
+    console.warn('   Get your API key at: https://openrouter.ai/');
+  }
+
+  try {
+    if (process.env.OPENROUTER_API_KEY) {
+      console.log('🚀 Starting MCP Server...');
+      await mcpService.startServer();
+    } else {
+      console.log('⚠️  Skipping MCP Server start (OPENROUTER_API_KEY not set)');
+    }
+  } catch (error) {
+    console.error('⚠️  MCP Server failed to start:', error.message);
+    console.error('   The server will continue, but tool execution will not work.');
+  }
+
+  app.listen(PORT, 'localhost', () => {
+    console.log(`\n✅ Backend server running on http://localhost:${PORT}`);
+    if (mcpService.isReady) {
+      console.log(`✅ MCP Server ready with OpenRouter`);
+    }
+    if (process.env.GROQ_API_KEY) {
+      console.log(`✅ Groq conversational AI active`);
+    }
+    console.log(`\nAPI Endpoints:`);
+    console.log(`  POST /api/conversation/chat`);
+    console.log(`  POST /api/conversation/chat/stream`);
+    console.log(`  GET  /api/conversation/history/:sessionId`);
+    console.log(`  GET  /health\n`);
+    
+    if (!process.env.GROQ_API_KEY || !process.env.OPENROUTER_API_KEY) {
+      console.log('⚠️  Setup required: Add API keys to backend/.env or Replit Secrets');
+      console.log('   See replit.md for setup instructions\n');
+    }
+  });
 }
 
 process.on('SIGINT', () => {

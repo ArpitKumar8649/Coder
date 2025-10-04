@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 class MCPService {
   constructor() {
     this.mcpProcess = null;
-    this.mcpBaseUrl = 'http://localhost:3001';
+    this.mcpBaseUrl = 'http://localhost:3000';
     this.isReady = false;
     
     this.modelConfig = {
@@ -49,7 +49,7 @@ class MCPService {
 
     this.mcpProcess.stdout.on('data', (data) => {
       console.log(`[MCP] ${data.toString().trim()}`);
-      if (data.toString().includes('Server started')) {
+      if (data.toString().includes('Server ready') || data.toString().includes('Server running')) {
         this.isReady = true;
       }
     });

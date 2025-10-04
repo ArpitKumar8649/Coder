@@ -6,7 +6,7 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 
 - **Frontend**: React + Vite (port 5000)
 - **Backend**: Node.js/Express (port 3002)
-- **MCP Server**: vibe-coder-mcp (port 3001)
+- **MCP Server**: vibe-coder-mcp (port 3000)
 
 ## Tech Stack
 
@@ -32,16 +32,14 @@ Before running the application, you need to obtain API keys:
 
 ### Setting up API Keys
 
-Add your API keys to the Replit Secrets:
+**Important: Use Replit Secrets for API keys (never commit keys to the repository)**
+
+Add your API keys to Replit Secrets:
 1. Click on "Tools" → "Secrets" in the Replit sidebar
 2. Add `GROQ_API_KEY` with your Groq API key
 3. Add `OPENROUTER_API_KEY` with your OpenRouter API key
 
-Or update `backend/.env` file:
-```env
-GROQ_API_KEY=your_groq_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-```
+The backend automatically reads these from the environment.
 
 ## Project Structure
 

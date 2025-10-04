@@ -4,7 +4,7 @@ import axios from 'axios';
 class ConversationService {
   constructor() {
     this.client = null;
-    this.model = 'x-ai/grok-4-fast:free';
+    this.model = 'google/gemini-2.0-flash-exp:free';
     
     this.tools = [
       {

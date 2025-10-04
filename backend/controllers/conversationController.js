@@ -1,4 +1,4 @@
-import conversationService from '../services/conversationService.js';
+import conversationService from '../services/groqService.js';
 import mcpService from '../services/mcpService.js';
 
 const conversationSessions = new Map();

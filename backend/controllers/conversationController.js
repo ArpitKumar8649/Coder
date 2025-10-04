@@ -45,7 +45,7 @@ export const conversationController = {
           let toolResult;
 
           try {
-            toolResult = await this.executeToolCall(toolName, toolArgs);
+            toolResult = await conversationController.executeToolCall(toolName, toolArgs);
             console.log(`✅ Tool completed successfully`);
           } catch (error) {
             console.error(`❌ Tool execution failed:`, error.message);

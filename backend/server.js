@@ -80,7 +80,7 @@ async function startServer() {
     console.error('   The server will continue, but tool execution will not work.');
   }
 
-  const host = '0.0.0.0';
+  const host = 'localhost';
   app.listen(PORT, host, () => {
     console.log(`\n✅ Backend server running on http://${host}:${PORT}`);
     if (mcpService.isReady) {

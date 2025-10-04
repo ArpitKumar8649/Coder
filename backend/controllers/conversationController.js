@@ -127,6 +127,11 @@ export const conversationController = {
         let finishReason = null;
 
         for await (const chunk of stream) {
+          // Skip empty or malformed chunks
+          if (!chunk || !chunk.choices || chunk.choices.length === 0) {
+            continue;
+          }
+          
           const delta = chunk.choices[0]?.delta;
           finishReason = chunk.choices[0]?.finish_reason;
 

@@ -4,7 +4,7 @@ import axios from 'axios';
 class ConversationService {
   constructor() {
     this.client = null;
-    this.model = 'meta-llama/llama-3.3-70b-instruct:free';
+    this.model = 'meta-llama/llama-3.1-8b-instruct:free';
     
     this.tools = [
       {

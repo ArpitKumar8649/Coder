@@ -10,8 +10,7 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 
 ## Tech Stack
 
-- **Groq SDK**: Fast, free conversational AI (llama-3.3-70b-versatile)
-- **OpenRouter**: Free model routing for tasks (x-ai/grok-beta:free)
+- **OpenRouter**: Free AI model for conversations and tasks (x-ai/grok-4-fast:free)
 - **MCP Tools**: Code generation via vibe-coder-mcp
 - **React**: Chat interface with streaming responses
 - **Express**: Backend API server
@@ -19,8 +18,7 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 ## Current Configuration (October 2025)
 
 ✅ **API Keys**: Configured in Replit Secrets
-✅ **OpenRouter Model**: Using `x-ai/grok-beta:free` (completely free!)
-✅ **Groq Model**: Using `llama-3.3-70b-versatile` (free tier)
+✅ **OpenRouter Model**: Using `x-ai/grok-4-fast:free` for all AI operations (completely free!)
 ✅ **Frontend**: Running on port 5000 with HMR enabled
 ✅ **Backend**: Running on port 3002
 ✅ **MCP Server**: Active on port 3000
@@ -29,12 +27,7 @@ A conversational AI website builder powered by Groq, OpenRouter, and MCP tools.
 
 Before running the application, you need to obtain API keys:
 
-### 1. Groq API Key (Free)
-- Sign up at: https://console.groq.com/
-- Get your API key from the dashboard
-- Free tier with generous limits
-
-### 2. OpenRouter API Key (Pay per use)
+### 1. OpenRouter API Key (Free tier available)
 - Sign up at: https://openrouter.ai/
 - Get your API key
 - Add credits (~$10 recommended to start)

@@ -44,8 +44,8 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'Conversational AI Website Builder API',
-    version: '2.0.0',
-    features: ['Groq Conversational AI', 'OpenRouter Tool Execution', 'MCP Tools'],
+    version: '2.1.0',
+    features: ['OpenRouter AI (x-ai/grok-4-fast:free)', 'MCP Tools', 'Full-stack Code Generation'],
     endpoints: {
       chat: 'POST /api/conversation/chat',
       streamChat: 'POST /api/conversation/chat/stream',
@@ -58,14 +58,15 @@ app.get('/', (req, res) => {
 async function startServer() {
   console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
   
-  if (!process.env.GROQ_API_KEY) {
-    console.warn('⚠️  Warning: GROQ_API_KEY not set. Conversational features will not work.');
-    console.warn('   Get your free API key at: https://console.groq.com/');
+  if (!process.env.OPENROUTER_API_KEY) {
+    console.warn('⚠️  Warning: OPENROUTER_API_KEY not set. All AI features will not work.');
+    console.warn('   Get your API key at: https://openrouter.ai/');
+  } else {
+    console.log('✅ OpenRouter API key configured');
   }
   
-  if (!process.env.OPENROUTER_API_KEY) {
-    console.warn('⚠️  Warning: OPENROUTER_API_KEY not set. Tool execution will not work.');
-    console.warn('   Get your API key at: https://openrouter.ai/');
+  if (process.env.GROQ_API_KEY) {
+    console.warn('⚠️  Note: GROQ_API_KEY is set but no longer used. All AI now uses OpenRouter..ai/');
   }
 
   try {

@@ -1,9 +1,10 @@
-import Groq from 'groq-sdk';
 
-class GroqService {
+import axios from 'axios';
+
+class ConversationService {
   constructor() {
     this.client = null;
-    this.model = process.env.GROQ_MODEL || 'qwen/qwen3-32b';
+    this.model = 'x-ai/grok-4-fast:free';
     
     this.tools = [
       {
@@ -106,11 +107,16 @@ class GroqService {
 
   getClient() {
     if (!this.client) {
-      if (!process.env.GROQ_API_KEY) {
-        throw new Error('GROQ_API_KEY is not set. Please add it to backend/.env or Replit Secrets.');
+      if (!process.env.OPENROUTER_API_KEY) {
+        throw new Error('OPENROUTER_API_KEY is not set. Please add it to backend/.env or Replit Secrets.');
       }
-      this.client = new Groq({
-        apiKey: process.env.GROQ_API_KEY
+      this.client = axios.create({
+        baseURL: 'https://openrouter.ai/api/v1',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'HTTP-Referer': 'https://replit.com',
+          'X-Title': 'AI Website Builder'
+        }
       });
     }
     return this.client;
@@ -119,20 +125,19 @@ class GroqService {
   async chat(messages, tools = this.tools) {
     try {
       const client = this.getClient();
-      const response = await client.chat.completions.create({
+      const response = await client.post('/chat/completions', {
         model: this.model,
         messages: messages,
         tools: tools,
         tool_choice: 'auto',
         temperature: 0.6,
-        max_completion_tokens: 4096,
-        top_p: 0.95,
-        reasoning_effort: 'none'
+        max_tokens: 4096,
+        top_p: 0.95
       });
 
-      return response;
+      return response.data;
     } catch (error) {
-      console.error('Groq API Error:', error);
+      console.error('OpenRouter API Error:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -140,21 +145,22 @@ class GroqService {
   async streamChat(messages, tools = this.tools) {
     try {
       const client = this.getClient();
-      const stream = await client.chat.completions.create({
+      const response = await client.post('/chat/completions', {
         model: this.model,
         messages: messages,
         tools: tools,
         tool_choice: 'auto',
         temperature: 0.6,
-        max_completion_tokens: 4096,
+        max_tokens: 4096,
         top_p: 0.95,
-        reasoning_effort: 'none',
         stream: true
+      }, {
+        responseType: 'stream'
       });
 
-      return stream;
+      return response.data;
     } catch (error) {
-      console.error('Groq Stream Error:', error);
+      console.error('OpenRouter Stream Error:', error.response?.data || error.message);
       throw error;
     }
   }
@@ -199,4 +205,4 @@ Remember: Once you start the workflow, complete all 5 steps without stopping.`
   }
 }
 
-export default new GroqService();
+export default new ConversationService();

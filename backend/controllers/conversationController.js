@@ -1,4 +1,4 @@
-import groqService from '../services/groqService.js';
+import conversationService from '../services/conversationService.js';
 import mcpService from '../services/mcpService.js';
 
 const conversationSessions = new Map();
@@ -17,7 +17,7 @@ export const conversationController = {
 
       const session = sessionId || `session_${Date.now()}`;
       let conversationHistory = conversationSessions.get(session) || [
-        groqService.getSystemPrompt()
+        conversationService.getSystemPrompt()
       ];
 
       conversationHistory.push({
@@ -27,13 +27,13 @@ export const conversationController = {
 
       console.log(`\n💬 User [${session}]: ${message}`);
 
-      let groqResponse = await groqService.chat(conversationHistory);
-      let assistantMessage = groqResponse.choices[0].message;
+      let conversationResponse = await conversationService.chat(conversationHistory);
+      let assistantMessage = conversationResponse.choices[0].message;
 
       while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
         conversationHistory.push(assistantMessage);
 
-        console.log(`\n🔧 Groq wants to use ${assistantMessage.tool_calls.length} tool(s)`);
+        console.log(`\n🔧 OpenRouter wants to use ${assistantMessage.tool_calls.length} tool(s)`);
 
         for (const toolCall of assistantMessage.tool_calls) {
           const toolName = toolCall.function.name;
@@ -62,8 +62,8 @@ export const conversationController = {
           });
         }
 
-        groqResponse = await groqService.chat(conversationHistory);
-        assistantMessage = groqResponse.choices[0].message;
+        conversationResponse = await conversationService.chat(conversationHistory);
+        assistantMessage = conversationResponse.choices[0].message;
       }
 
       conversationHistory.push(assistantMessage);
@@ -107,7 +107,7 @@ export const conversationController = {
 
       const session = sessionId || `session_${Date.now()}`;
       let conversationHistory = conversationSessions.get(session) || [
-        groqService.getSystemPrompt()
+        conversationService.getSystemPrompt()
       ];
 
       conversationHistory.push({
@@ -118,9 +118,9 @@ export const conversationController = {
       console.log(`\n💬 User [${session}]: ${message}`);
 
       let continueLoop = true;
-      
+
       while (continueLoop) {
-        const stream = await groqService.streamChat(conversationHistory);
+        const stream = await conversationService.streamChat(conversationHistory);
 
         let accumulatedContent = '';
         let accumulatedToolCalls = [];
@@ -132,9 +132,9 @@ export const conversationController = {
 
           if (delta?.content) {
             accumulatedContent += delta.content;
-            res.write(`data: ${JSON.stringify({ 
-              type: 'content', 
-              content: delta.content 
+            res.write(`data: ${JSON.stringify({
+              type: 'content',
+              content: delta.content
             })}\n\n`);
           }
 
@@ -147,7 +147,7 @@ export const conversationController = {
                   function: { name: '', arguments: '' }
                 };
               }
-              
+
               if (toolCallDelta.function?.name) {
                 accumulatedToolCalls[toolCallDelta.index].function.name += toolCallDelta.function.name;
               }
@@ -164,15 +164,15 @@ export const conversationController = {
             content: accumulatedContent || null,
             tool_calls: accumulatedToolCalls
           };
-          
+
           conversationHistory.push(assistantMessage);
 
-          res.write(`data: ${JSON.stringify({ 
-            type: 'tool_call', 
-            tools: accumulatedToolCalls 
+          res.write(`data: ${JSON.stringify({
+            type: 'tool_call',
+            tools: accumulatedToolCalls
           })}\n\n`);
 
-          console.log(`\n🔧 Groq wants to use ${accumulatedToolCalls.length} tool(s)`);
+          console.log(`\n🔧 OpenRouter wants to use ${accumulatedToolCalls.length} tool(s)`);
 
           for (const toolCall of accumulatedToolCalls) {
             const toolName = toolCall.function.name;
@@ -206,7 +206,7 @@ export const conversationController = {
             role: 'assistant',
             content: accumulatedContent
           });
-          
+
           console.log(`\n🤖 Assistant: ${accumulatedContent}\n`);
           continueLoop = false;
         }
@@ -219,9 +219,9 @@ export const conversationController = {
 
     } catch (error) {
       console.error('Stream error:', error);
-      res.write(`data: ${JSON.stringify({ 
-        type: 'error', 
-        error: error.message 
+      res.write(`data: ${JSON.stringify({
+        type: 'error',
+        error: error.message
       })}\n\n`);
       res.end();
     }
@@ -256,9 +256,9 @@ export const conversationController = {
   async getHistory(req, res) {
     try {
       const { sessionId } = req.params;
-      
+
       const history = conversationSessions.get(sessionId);
-      
+
       if (!history) {
         return res.status(404).json({
           success: false,
@@ -287,9 +287,9 @@ export const conversationController = {
   async clearHistory(req, res) {
     try {
       const { sessionId } = req.params;
-      
+
       conversationSessions.delete(sessionId);
-      
+
       res.json({
         success: true,
         message: 'Conversation history cleared'

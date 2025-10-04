@@ -1,0 +1,1780 @@
+# Conversational AI Website Builder with Groq + OpenRouter + MCP
+
+## 🎯 Architecture Overview
+
+This guide implements a **conversational AI website builder** where:
+
+1. **Groq** handles natural conversation and intelligent tool selection
+2. **OpenRouter** executes specific tasks with specialized models
+3. **MCP Tools** provide the underlying functionality
+4. **User** gets a ChatGPT-like experience with reasoning and explanations
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ User: "Build me a blog website with authentication"     │
+└──────────────────┬──────────────────────────────────────┘
+                   ↓
+┌──────────────────────────────────────────────────────────┐
+│ Frontend (React)                                         │
+│ - Chat Interface                                         │
+│ - Message streaming                                      │
+│ - Real-time updates                                      │
+└──────────────────┬───────────────────────────────────────┘
+                   ↓ WebSocket/HTTP
+┌──────────────────────────────────────────────────────────┐
+│ Backend API                                              │
+│ - Receives user messages                                 │
+│ - Manages conversation state                             │
+└──────────────────┬───────────────────────────────────────┘
+                   ↓
+┌──────────────────────────────────────────────────────────┐
+│ Groq LLM (llama-3.3-70b-versatile)                      │
+│ - Understands user intent                                │
+│ - Provides natural conversation                          │
+│ - Decides which tools to use                             │
+│ - Explains reasoning                                     │
+└──────────────────┬───────────────────────────────────────┘
+                   ↓ Tool Selection
+┌──────────────────────────────────────────────────────────┐
+│ Tool Router                                              │
+│ - Routes to appropriate MCP tool                         │
+│ - Selects OpenRouter model for task                     │
+└──────────────────┬───────────────────────────────────────┘
+                   ↓
+┌──────────────────────────────────────────────────────────┐
+│ MCP Tools + OpenRouter Models                           │
+│ ├─ Research → Perplexity Sonar                          │
+│ ├─ PRD Generation → Claude 3.5 Sonnet                   │
+│ ├─ User Stories → Claude 3.5 Sonnet                     │
+│ ├─ Task Lists → Gemini 2.5 Flash                        │
+│ └─ Code Generation → Gemini 2.5 Flash or GPT-4          │
+└──────────────────┬───────────────────────────────────────┘
+                   ↓
+┌──────────────────────────────────────────────────────────┐
+│ Response back to Groq                                    │
+│ - Groq interprets results                                │
+│ - Generates natural response                             │
+│ - Streams back to user                                   │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🔑 API Keys Required
+
+### 1. **Groq API Key** (Free - Fast inference)
+- Sign up: https://console.groq.com/
+- Get API key from dashboard
+- Free tier: Very generous limits
+
+### 2. **OpenRouter API Key** (Pay per use)
+- Sign up: https://openrouter.ai/
+- Get API key
+- Add credits ($10 recommended to start)
+
+---
+
+## 📦 Installation
+
+### Backend Dependencies
+
+```bash
+cd backend
+npm install express cors dotenv groq-sdk vibe-coder-mcp axios ws
+```
+
+---
+
+## 🏗️ Backend Implementation
+
+### Step 1: Environment Configuration
+
+Create `backend/.env`:
+
+```env
+# Server Configuration
+PORT=3000
+NODE_ENV=development
+
+# Groq Configuration (Conversational AI)
+GROQ_API_KEY=gsk_your_groq_api_key_here
+
+# OpenRouter Configuration (Tool Execution)
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_api_key_here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# MCP Configuration
+VIBE_PROJECT_ROOT=../generated-projects
+VIBE_CODER_OUTPUT_DIR=../generated-projects/VibeCoderOutput
+
+# Model Selection for Each Tool
+RESEARCH_MODEL=perplexity/sonar-pro
+PRD_MODEL=anthropic/claude-3.5-sonnet
+USER_STORIES_MODEL=anthropic/claude-3.5-sonnet
+TASK_LIST_MODEL=google/gemini-2.5-flash-preview-05-20
+CODE_GENERATION_MODEL=google/gemini-2.5-flash-preview-05-20
+# Alternative: CODE_GENERATION_MODEL=openai/gpt-4-turbo-preview
+
+# Groq Model
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:3000
+
+# Logging
+LOG_LEVEL=info
+```
+
+---
+
+### Step 2: Create Groq Conversation Service
+
+Create `backend/services/groqService.js`:
+
+```javascript
+import Groq from 'groq-sdk';
+
+class GroqService {
+  constructor() {
+    this.client = new Groq({
+      apiKey: process.env.GROQ_API_KEY
+    });
+    this.model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    
+    // Define available tools for Groq to use
+    this.tools = [
+      {
+        type: 'function',
+        function: {
+          name: 'research_best_practices',
+          description: 'Research best practices, latest trends, and technologies for a given topic or project type. Use this when user asks about technologies, frameworks, or needs recommendations.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: {
+                type: 'string',
+                description: 'The research query, e.g., "best practices for building a blog platform with React"'
+              }
+            },
+            required: ['query']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_prd',
+          description: 'Generate a comprehensive Product Requirements Document (PRD) for a software project. Use this when you have a clear understanding of what the user wants to build.',
+          parameters: {
+            type: 'object',
+            properties: {
+              productDescription: {
+                type: 'string',
+                description: 'Detailed description of the product to build'
+              }
+            },
+            required: ['productDescription']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_user_stories',
+          description: 'Generate detailed user stories with acceptance criteria from a PRD. Use this after creating a PRD to break it down into user-focused features.',
+          parameters: {
+            type: 'object',
+            properties: {
+              prdContent: {
+                type: 'string',
+                description: 'The PRD content to generate user stories from'
+              }
+            },
+            required: ['prdContent']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_task_list',
+          description: 'Generate a detailed development task list from user stories. Use this to break down user stories into actionable development tasks.',
+          parameters: {
+            type: 'object',
+            properties: {
+              userStoriesContent: {
+                type: 'string',
+                description: 'The user stories content to generate tasks from'
+              }
+            },
+            required: ['userStoriesContent']
+          }
+        }
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'generate_website_code',
+          description: 'Generate complete full-stack website code (frontend + backend). Use this as the final step after planning is complete.',
+          parameters: {
+            type: 'object',
+            properties: {
+              productDescription: {
+                type: 'string',
+                description: 'Complete description of the website to generate'
+              },
+              frontend: {
+                type: 'string',
+                enum: ['react', 'vue', 'angular', 'svelte'],
+                description: 'Frontend framework to use'
+              },
+              backend: {
+                type: 'string',
+                enum: ['nodejs', 'python', 'go', 'java'],
+                description: 'Backend technology to use'
+              }
+            },
+            required: ['productDescription', 'frontend', 'backend']
+          }
+        }
+      }
+    ];
+  }
+
+  /**
+   * Create a chat completion with tool calling
+   */
+  async chat(messages, tools = this.tools) {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: this.model,
+        messages: messages,
+        tools: tools,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 2048
+      });
+
+      return response;
+    } catch (error) {
+      console.error('Groq API Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Stream chat completion
+   */
+  async streamChat(messages, tools = this.tools) {
+    try {
+      const stream = await this.client.chat.completions.create({
+        model: this.model,
+        messages: messages,
+        tools: tools,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 2048,
+        stream: true
+      });
+
+      return stream;
+    } catch (error) {
+      console.error('Groq Stream Error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate system prompt for website builder
+   */
+  getSystemPrompt() {
+    return {
+      role: 'system',
+      content: `You are an expert AI website builder assistant. Your role is to help users create websites through natural conversation.
+
+PERSONALITY:
+- Friendly, enthusiastic, and encouraging
+- Use conversational language, not technical jargon
+- Show genuine excitement about helping build their project
+- Be patient and ask clarifying questions when needed
+
+WORKFLOW:
+1. **Understand Requirements**: Ask questions to fully understand what the user wants
+2. **Research**: Use research_best_practices to find the best approaches
+3. **Plan**: Generate PRD and user stories for structured planning
+4. **Build**: Generate the actual website code
+5. **Explain**: Always explain your choices and reasoning
+
+TOOL USAGE:
+- Use tools step-by-step, explaining what you're doing
+- Don't rush - ensure you understand requirements before generating code
+- After using a tool, summarize the results in natural language
+
+CONVERSATION STYLE:
+- "Great idea! Let me think about the best way to build this..."
+- "I'm researching modern approaches for this type of website..."
+- "Based on what I found, I recommend using React because..."
+- "Your website is taking shape! Here's what I'm creating..."
+
+IMPORTANT:
+- Always explain WHY you're making specific technical choices
+- Break down complex concepts into simple terms
+- Be proactive in suggesting features they might not have thought of
+- Celebrate progress and completed milestones`
+    };
+  }
+}
+
+export default new GroqService();
+```
+
+---
+
+### Step 3: Enhanced MCP Service with Model Selection
+
+Update `backend/services/mcpService.js`:
+
+```javascript
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import axios from 'axios';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+class MCPService {
+  constructor() {
+    this.mcpProcess = null;
+    this.mcpBaseUrl = 'http://localhost:3001';
+    this.isReady = false;
+    
+    // Model configuration for each tool
+    this.modelConfig = {
+      research: process.env.RESEARCH_MODEL || 'perplexity/sonar-pro',
+      prd: process.env.PRD_MODEL || 'anthropic/claude-3.5-sonnet',
+      userStories: process.env.USER_STORIES_MODEL || 'anthropic/claude-3.5-sonnet',
+      taskList: process.env.TASK_LIST_MODEL || 'google/gemini-2.5-flash-preview-05-20',
+      codeGeneration: process.env.CODE_GENERATION_MODEL || 'google/gemini-2.5-flash-preview-05-20'
+    };
+  }
+
+  async startServer() {
+    if (this.mcpProcess) {
+      console.log('MCP Server already running');
+      return;
+    }
+
+    console.log('🚀 Starting MCP Server with OpenRouter...');
+    console.log('📊 Model Configuration:');
+    console.log(`   Research: ${this.modelConfig.research}`);
+    console.log(`   PRD: ${this.modelConfig.prd}`);
+    console.log(`   User Stories: ${this.modelConfig.userStories}`);
+    console.log(`   Task List: ${this.modelConfig.taskList}`);
+    console.log(`   Code Gen: ${this.modelConfig.codeGeneration}`);
+
+    this.mcpProcess = spawn('npx', ['vibe-coder-mcp', '--sse'], {
+      env: {
+        ...process.env,
+        OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+        VIBE_PROJECT_ROOT: path.resolve(__dirname, process.env.VIBE_PROJECT_ROOT),
+        VIBE_CODER_OUTPUT_DIR: path.resolve(__dirname, process.env.VIBE_CODER_OUTPUT_DIR),
+        // Pass model configuration to MCP
+        GEMINI_MODEL: this.modelConfig.codeGeneration,
+        LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    this.mcpProcess.stdout.on('data', (data) => {
+      console.log(`[MCP] ${data.toString().trim()}`);
+      if (data.toString().includes('Server started')) {
+        this.isReady = true;
+      }
+    });
+
+    this.mcpProcess.stderr.on('data', (data) => {
+      console.error(`[MCP Error] ${data.toString().trim()}`);
+    });
+
+    this.mcpProcess.on('close', (code) => {
+      console.log(`MCP Server exited with code ${code}`);
+      this.mcpProcess = null;
+      this.isReady = false;
+    });
+
+    await this.waitForReady();
+  }
+
+  async waitForReady(timeout = 30000) {
+    const startTime = Date.now();
+    while (!this.isReady && Date.now() - startTime < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    if (!this.isReady) {
+      throw new Error('MCP Server failed to start within timeout');
+    }
+    console.log('✅ MCP Server is ready!');
+  }
+
+  stopServer() {
+    if (this.mcpProcess) {
+      this.mcpProcess.kill();
+      this.mcpProcess = null;
+      this.isReady = false;
+      console.log('MCP Server stopped');
+    }
+  }
+
+  async executeTool(toolName, params) {
+    if (!this.isReady) {
+      throw new Error('MCP Server is not ready');
+    }
+
+    try {
+      console.log(`[MCP] Executing tool: ${toolName}`);
+      const response = await axios.post(`${this.mcpBaseUrl}/mcp/execute`, {
+        tool: toolName,
+        arguments: params
+      }, {
+        timeout: 120000
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error(`Error executing MCP tool ${toolName}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Research with Perplexity Sonar
+   */
+  async research(query) {
+    console.log(`[OpenRouter:${this.modelConfig.research}] Researching: ${query}`);
+    return await this.executeTool('research', { query });
+  }
+
+  /**
+   * Generate PRD with Claude 3.5 Sonnet
+   */
+  async generatePRD(productDescription) {
+    console.log(`[OpenRouter:${this.modelConfig.prd}] Generating PRD`);
+    return await this.executeTool('prd-generator', { productDescription });
+  }
+
+  /**
+   * Generate User Stories with Claude 3.5 Sonnet
+   */
+  async generateUserStories(prdContent) {
+    console.log(`[OpenRouter:${this.modelConfig.userStories}] Generating user stories`);
+    return await this.executeTool('user-stories-generator', { 
+      prdContent,
+      outputFormat: 'detailed'
+    });
+  }
+
+  /**
+   * Generate Task List with Gemini 2.5 Flash
+   */
+  async generateTaskList(userStoriesContent) {
+    console.log(`[OpenRouter:${this.modelConfig.taskList}] Generating task list`);
+    return await this.executeTool('task-list-generator', { 
+      userStoriesContent 
+    });
+  }
+
+  /**
+   * Generate Code with Gemini 2.5 Flash or GPT-4
+   */
+  async generateStarterKit(productDescription, frontend = 'react', backend = 'nodejs') {
+    console.log(`[OpenRouter:${this.modelConfig.codeGeneration}] Generating code: ${frontend} + ${backend}`);
+    return await this.executeTool('fullstack-starter-kit-generator', {
+      productDescription,
+      frontend,
+      backend,
+      includeAuth: true,
+      includeDatabase: true
+    });
+  }
+}
+
+const mcpService = new MCPService();
+export default mcpService;
+```
+
+---
+
+### Step 4: Create Conversational Controller
+
+Create `backend/controllers/conversationController.js`:
+
+```javascript
+import groqService from '../services/groqService.js';
+import mcpService from '../services/mcpService.js';
+
+// Store conversation history per session
+const conversationSessions = new Map();
+
+export const conversationController = {
+  /**
+   * Handle conversational chat
+   */
+  async chat(req, res) {
+    try {
+      const { message, sessionId } = req.body;
+
+      if (!message) {
+        return res.status(400).json({
+          success: false,
+          error: 'Message is required'
+        });
+      }
+
+      // Get or create conversation history
+      const session = sessionId || `session_${Date.now()}`;
+      let conversationHistory = conversationSessions.get(session) || [
+        groqService.getSystemPrompt()
+      ];
+
+      // Add user message
+      conversationHistory.push({
+        role: 'user',
+        content: message
+      });
+
+      console.log(`\n💬 User [${session}]: ${message}`);
+
+      // Get Groq response (may include tool calls)
+      let groqResponse = await groqService.chat(conversationHistory);
+      let assistantMessage = groqResponse.choices[0].message;
+
+      // Handle tool calls
+      while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        // Add assistant message with tool calls to history
+        conversationHistory.push(assistantMessage);
+
+        console.log(`\n🔧 Groq wants to use ${assistantMessage.tool_calls.length} tool(s)`);
+
+        // Execute each tool call
+        for (const toolCall of assistantMessage.tool_calls) {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+
+          console.log(`\n⚙️  Executing: ${toolName}`);
+          console.log(`   Arguments:`, toolArgs);
+
+          let toolResult;
+
+          try {
+            // Route to appropriate MCP tool
+            toolResult = await this.executeToolCall(toolName, toolArgs);
+            console.log(`✅ Tool completed successfully`);
+          } catch (error) {
+            console.error(`❌ Tool execution failed:`, error.message);
+            toolResult = {
+              error: error.message,
+              success: false
+            };
+          }
+
+          // Add tool result to conversation
+          conversationHistory.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(toolResult)
+          });
+        }
+
+        // Get next Groq response with tool results
+        groqResponse = await groqService.chat(conversationHistory);
+        assistantMessage = groqResponse.choices[0].message;
+      }
+
+      // Add final assistant message to history
+      conversationHistory.push(assistantMessage);
+
+      // Save conversation history
+      conversationSessions.set(session, conversationHistory);
+
+      console.log(`\n🤖 Assistant: ${assistantMessage.content}\n`);
+
+      res.json({
+        success: true,
+        data: {
+          message: assistantMessage.content,
+          sessionId: session,
+          conversationLength: conversationHistory.length
+        }
+      });
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  /**
+   * Stream conversational chat (real-time response)
+   */
+  async streamChat(req, res) {
+    try {
+      const { message, sessionId } = req.body;
+
+      if (!message) {
+        return res.status(400).json({
+          success: false,
+          error: 'Message is required'
+        });
+      }
+
+      // Set up SSE
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      const session = sessionId || `session_${Date.now()}`;
+      let conversationHistory = conversationSessions.get(session) || [
+        groqService.getSystemPrompt()
+      ];
+
+      conversationHistory.push({
+        role: 'user',
+        content: message
+      });
+
+      // Stream Groq response
+      const stream = await groqService.streamChat(conversationHistory);
+
+      let accumulatedContent = '';
+      let accumulatedToolCalls = [];
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+
+        if (delta?.content) {
+          accumulatedContent += delta.content;
+          res.write(`data: ${JSON.stringify({ 
+            type: 'content', 
+            content: delta.content 
+          })}\n\n`);
+        }
+
+        if (delta?.tool_calls) {
+          accumulatedToolCalls.push(...delta.tool_calls);
+        }
+
+        // Handle finish reason
+        if (chunk.choices[0]?.finish_reason === 'tool_calls') {
+          res.write(`data: ${JSON.stringify({ 
+            type: 'tool_call', 
+            tools: accumulatedToolCalls 
+          })}\n\n`);
+          
+          // Execute tools and continue conversation
+          // (Implementation similar to non-streaming version)
+        }
+      }
+
+      conversationHistory.push({
+        role: 'assistant',
+        content: accumulatedContent
+      });
+
+      conversationSessions.set(session, conversationHistory);
+
+      res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+      res.end();
+
+    } catch (error) {
+      console.error('Stream error:', error);
+      res.write(`data: ${JSON.stringify({ 
+        type: 'error', 
+        error: error.message 
+      })}\n\n`);
+      res.end();
+    }
+  },
+
+  /**
+   * Execute tool call by routing to MCP service
+   */
+  async executeToolCall(toolName, args) {
+    switch (toolName) {
+      case 'research_best_practices':
+        return await mcpService.research(args.query);
+
+      case 'generate_prd':
+        return await mcpService.generatePRD(args.productDescription);
+
+      case 'generate_user_stories':
+        return await mcpService.generateUserStories(args.prdContent);
+
+      case 'generate_task_list':
+        return await mcpService.generateTaskList(args.userStoriesContent);
+
+      case 'generate_website_code':
+        return await mcpService.generateStarterKit(
+          args.productDescription,
+          args.frontend,
+          args.backend
+        );
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`);
+    }
+  },
+
+  /**
+   * Get conversation history
+   */
+  async getHistory(req, res) {
+    try {
+      const { sessionId } = req.params;
+      
+      const history = conversationSessions.get(sessionId);
+      
+      if (!history) {
+        return res.status(404).json({
+          success: false,
+          error: 'Session not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          sessionId,
+          messages: history.filter(msg => msg.role !== 'system'),
+          messageCount: history.length - 1
+        }
+      });
+
+    } catch (error) {
+      console.error('Get history error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  },
+
+  /**
+   * Clear conversation history
+   */
+  async clearHistory(req, res) {
+    try {
+      const { sessionId } = req.params;
+      
+      conversationSessions.delete(sessionId);
+      
+      res.json({
+        success: true,
+        message: 'Conversation history cleared'
+      });
+
+    } catch (error) {
+      console.error('Clear history error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+};
+```
+
+---
+
+### Step 5: Update Routes
+
+Create `backend/routes/conversation.js`:
+
+```javascript
+import express from 'express';
+import { conversationController } from '../controllers/conversationController.js';
+
+const router = express.Router();
+
+// Conversational endpoints
+router.post('/chat', conversationController.chat);
+router.post('/chat/stream', conversationController.streamChat);
+router.get('/history/:sessionId', conversationController.getHistory);
+router.delete('/history/:sessionId', conversationController.clearHistory);
+
+export default router;
+```
+
+Update `backend/server.js`:
+
+```javascript
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import conversationRoutes from './routes/conversation.js';
+import mcpService from './services/mcpService.js';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true
+}));
+app.use(express.json());
+
+// Routes
+app.use('/api/conversation', conversationRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    mcpReady: mcpService.isReady,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Conversational AI Website Builder API',
+    version: '2.0.0',
+    features: ['Groq Conversational AI', 'OpenRouter Tool Execution', 'MCP Tools'],
+    endpoints: {
+      chat: 'POST /api/conversation/chat',
+      streamChat: 'POST /api/conversation/chat/stream',
+      history: 'GET /api/conversation/history/:sessionId',
+      health: 'GET /health'
+    }
+  });
+});
+
+// Start server
+async function startServer() {
+  try {
+    console.log('🌍 Environment:', process.env.NODE_ENV);
+    console.log('🚀 Starting MCP Server...');
+    
+    await mcpService.startServer();
+
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n✅ Backend server running on http://localhost:${PORT}`);
+      console.log(`✅ MCP Server ready with OpenRouter`);
+      console.log(`✅ Groq conversational AI active`);
+      console.log(`\nAPI Endpoints:`);
+      console.log(`  POST /api/conversation/chat`);
+      console.log(`  POST /api/conversation/chat/stream`);
+      console.log(`  GET  /api/conversation/history/:sessionId`);
+      console.log(`  GET  /health\n`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  mcpService.stopServer();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n🛑 Shutting down gracefully...');
+  mcpService.stopServer();
+  process.exit(0);
+});
+
+startServer();
+```
+
+---
+
+## 💻 Frontend Implementation
+
+### Step 1: Update API Service
+
+Create `frontend/src/services/conversationService.js`:
+
+```javascript
+import axios from 'axios';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+
+class ConversationService {
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 180000, // 3 minutes for complex operations
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    this.sessionId = this.getOrCreateSessionId();
+  }
+
+  getOrCreateSessionId() {
+    let sessionId = localStorage.getItem('conversationSessionId');
+    if (!sessionId) {
+      sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('conversationSessionId', sessionId);
+    }
+    return sessionId;
+  }
+
+  /**
+   * Send message to conversational AI
+   */
+  async sendMessage(message) {
+    try {
+      const response = await this.client.post('/conversation/chat', {
+        message,
+        sessionId: this.sessionId
+      });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Stream message for real-time response
+   */
+  async streamMessage(message, onChunk, onComplete, onError) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversation/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          sessionId: this.sessionId
+        })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.type === 'content') {
+              onChunk(data.content);
+            } else if (data.type === 'done') {
+              onComplete();
+            } else if (data.type === 'error') {
+              onError(data.error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      onError(this.handleError(error));
+    }
+  }
+
+  /**
+   * Get conversation history
+   */
+  async getHistory() {
+    try {
+      const response = await this.client.get(`/conversation/history/${this.sessionId}`);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Clear conversation and start fresh
+   */
+  async clearConversation() {
+    try {
+      await this.client.delete(`/conversation/history/${this.sessionId}`);
+      // Create new session
+      this.sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem('conversationSessionId', this.sessionId);
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  handleError(error) {
+    if (error.response) {
+      return new Error(error.response.data.error || 'Server error occurred');
+    } else if (error.request) {
+      return new Error('No response from server. Please check if backend is running.');
+    } else {
+      return new Error(error.message || 'An unexpected error occurred');
+    }
+  }
+}
+
+export default new ConversationService();
+```
+
+---
+
+### Step 2: Create Chat Component
+
+Create `frontend/src/components/ChatInterface.jsx`:
+
+```javascript
+import React, { useState, useRef, useEffect } from 'react';
+import conversationService from '../services/conversationService';
+import './ChatInterface.css';
+
+function ChatInterface() {
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: "👋 Hi! I'm your AI website builder assistant. Tell me what kind of website you'd like to create, and I'll help bring it to life! I can research best practices, plan your project, and generate the complete code.",
+      timestamp: new Date()
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = {
+      role: 'user',
+      content: input,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+    setIsTyping(true);
+
+    try {
+      // Use streaming for better UX
+      let assistantContent = '';
+      const assistantMessage = {
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      await conversationService.streamMessage(
+        input,
+        // On chunk
+        (chunk) => {
+          assistantContent += chunk;
+          setMessages(prev => {
+            const newMessages = [...prev];
+            newMessages[newMessages.length - 1] = {
+              ...assistantMessage,
+              content: assistantContent
+            };
+            return newMessages;
+          });
+        },
+        // On complete
+        () => {
+          setIsLoading(false);
+          setIsTyping(false);
+          inputRef.current?.focus();
+        },
+        // On error
+        (error) => {
+          console.error('Stream error:', error);
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `❌ Sorry, I encountered an error: ${error.message}. Please try again.`,
+            timestamp: new Date()
+          }]);
+          setIsLoading(false);
+          setIsTyping(false);
+        }
+      );
+
+    } catch (error) {
+      console.error('Error:', error);
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `❌ Sorry, I encountered an error: ${error.message}. Please try again.`,
+        timestamp: new Date()
+      }]);
+      setIsLoading(false);
+      setIsTyping(false);
+    }
+  };
+
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleClearChat = async () => {
+    if (window.confirm('Clear conversation and start fresh?')) {
+      try {
+        await conversationService.clearConversation();
+        setMessages([
+          {
+            role: 'assistant',
+            content: "👋 Hi! I'm your AI website builder assistant. Tell me what kind of website you'd like to create!",
+            timestamp: new Date()
+          }
+        ]);
+      } catch (error) {
+        console.error('Error clearing chat:', error);
+      }
+    }
+  };
+
+  const examplePrompts = [
+    "Build a modern blog platform with user authentication",
+    "Create an e-commerce store for selling handmade jewelry",
+    "I need a task management app like Trello with real-time updates",
+    "Build a portfolio website for a photographer with image galleries"
+  ];
+
+  return (
+    <div className="chat-interface">
+      {/* Header */}
+      <div className="chat-header">
+        <div className="header-content">
+          <h1>🤖 AI Website Builder</h1>
+          <p>Powered by Groq + OpenRouter + MCP</p>
+        </div>
+        <button className="clear-button" onClick={handleClearChat}>
+          🔄 New Chat
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="chat-messages">
+        {messages.map((msg, index) => (
+          <div key={index} className={`message ${msg.role}`}>
+            <div className="message-avatar">
+              {msg.role === 'user' ? '👤' : '🤖'}
+            </div>
+            <div className="message-content">
+              <div className="message-text">{msg.content}</div>
+              <div className="message-time">
+                {msg.timestamp.toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        {isTyping && (
+          <div className="message assistant">
+            <div className="message-avatar">🤖</div>
+            <div className="message-content">
+              <div className="typing-indicator">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Example Prompts (show only if conversation is empty) */}
+      {messages.length <= 1 && (
+        <div className="example-prompts">
+          <p className="example-title">💡 Try these examples:</p>
+          <div className="example-grid">
+            {examplePrompts.map((prompt, index) => (
+              <button
+                key={index}
+                className="example-prompt"
+                onClick={() => {
+                  setInput(prompt);
+                  inputRef.current?.focus();
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="chat-input">
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+          placeholder="Describe the website you want to build..."
+          disabled={isLoading}
+          rows={1}
+        />
+        <button 
+          onClick={handleSend} 
+          disabled={!input.trim() || isLoading}
+          className="send-button"
+        >
+          {isLoading ? '⏳' : '🚀'} Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default ChatInterface;
+```
+
+---
+
+### Step 3: Create Styles
+
+Create `frontend/src/components/ChatInterface.css`:
+
+```css
+.chat-interface {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: #f5f5f5;
+}
+
+.chat-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.header-content h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.header-content p {
+  margin: 5px 0 0 0;
+  opacity: 0.9;
+  font-size: 0.9rem;
+}
+
+.clear-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.clear-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #ffffff;
+}
+
+.message {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.user {
+  flex-direction: row-reverse;
+}
+
+.message-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+  background: #f0f0f0;
+}
+
+.message.user .message-avatar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.message-content {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.message.user .message-content {
+  align-items: flex-end;
+}
+
+.message-text {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #f5f5f5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.5;
+}
+
+.message.user .message-text {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.message-time {
+  font-size: 0.75rem;
+  color: #999;
+  padding: 0 8px;
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: #f5f5f5;
+  border-radius: 12px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #999;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-10px);
+  }
+}
+
+.example-prompts {
+  padding: 20px;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+}
+
+.example-title {
+  margin: 0 0 15px 0;
+  font-weight: 600;
+  color: #666;
+}
+
+.example-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.example-prompt {
+  padding: 12px 16px;
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.example-prompt:hover {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+  transform: translateY(-2px);
+}
+
+.chat-input {
+  display: flex;
+  gap: 12px;
+  padding: 20px;
+  background: white;
+  border-top: 2px solid #e0e0e0;
+}
+
+.chat-input textarea {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 1rem;
+  resize: none;
+  min-height: 50px;
+  max-height: 150px;
+  transition: border-color 0.2s;
+}
+
+.chat-input textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.send-button {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.send-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+}
+
+.send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+.chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+```
+
+---
+
+### Step 4: Update App.js
+
+```javascript
+import React from 'react';
+import ChatInterface from './components/ChatInterface';
+import './App.css';
+
+function App() {
+  return (
+    <div className="App">
+      <ChatInterface />
+    </div>
+  );
+}
+
+export default App;
+```
+
+---
+
+## 🚀 Running the Application
+
+### Step 1: Install Dependencies
+
+```bash
+# Backend
+cd backend
+npm install
+
+# Frontend
+cd ../frontend
+npm install
+```
+
+### Step 2: Configure Environment
+
+Ensure `backend/.env` has all required keys:
+```env
+GROQ_API_KEY=gsk_your_groq_key
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key
+```
+
+### Step 3: Start Backend
+
+```bash
+cd backend
+npm start
+```
+
+Expected output:
+```
+🚀 Starting MCP Server with OpenRouter...
+📊 Model Configuration:
+   Research: perplexity/sonar-pro
+   PRD: anthropic/claude-3.5-sonnet
+   User Stories: anthropic/claude-3.5-sonnet
+   Task List: google/gemini-2.5-flash-preview-05-20
+   Code Gen: google/gemini-2.5-flash-preview-05-20
+✅ MCP Server is ready!
+✅ Backend server running on http://localhost:3000
+✅ Groq conversational AI active
+```
+
+### Step 4: Start Frontend
+
+```bash
+cd frontend
+npm start
+```
+
+---
+
+## 💬 Example Conversations
+
+### Example 1: Simple Blog
+
+**User:** "I want to build a blog website"
+
+**AI:** "That's a great project! Let me help you create a modern blog platform. First, let me research the best practices for blog development..."
+
+*[AI uses research tool with Perplexity]*
+
+**AI:** "Based on my research, I recommend using React for the frontend because of its component-based architecture and rich ecosystem. For the backend, Node.js with Express would be perfect.
+
+Let me create a detailed requirements document for your blog..."
+
+*[AI uses PRD generator with Claude]*
+
+**AI:** "I've outlined all the features your blog will need:
+- User authentication and profiles
+- Rich text editor for creating posts
+- Comment system
+- Categories and tags
+- Responsive design
+
+Now I'll generate the complete code for you..."
+
+*[AI uses code generator with Gemini]*
+
+**AI:** "✨ Your blog is ready! I've created a full-stack application with:
+
+**Frontend:**
+- Modern React with Tailwind CSS
+- Rich markdown editor
+- Responsive design
+- User authentication UI
+
+**Backend:**
+- Node.js + Express
+- JWT authentication
+- MongoDB database
+- RESTful API
+
+**Why these choices?**
+- React: Best for interactive, dynamic UIs
+- Tailwind: Rapid styling with utility classes
+- JWT: Secure, stateless authentication
+- MongoDB: Flexible schema perfect for blog posts
+
+You can find your code at: `/generated-projects/blog-platform`
+
+Would you like me to add any specific features, like email notifications or social sharing?"
+
+---
+
+### Example 2: E-commerce Store
+
+**User:** "Create an online store for selling handmade jewelry"
+
+**AI:** "How exciting! An online store for handmade jewelry - that's a beautiful niche. Let me research the best e-commerce practices and technologies..."
+
+*[Uses research, PRD, user stories, tasks, then code generation]*
+
+**AI:** "I've built your complete e-commerce platform! Here's what's included:
+
+**Features:**
+- Product catalog with beautiful image galleries
+- Shopping cart with persistent storage
+- Secure checkout with Stripe integration
+- Order management system
+- Admin dashboard
+- Customer reviews
+- Inventory tracking
+
+**Tech Stack:**
+- React + Tailwind (stunning UI)
+- Node.js + Express (robust backend)
+- Stripe (secure payments)
+- MongoDB (product & order data)
+
+**Why Stripe?** It's the industry standard for payment processing, handles all security, and supports multiple payment methods.
+
+Your store is generated at: `/generated-projects/jewelry-store`
+
+Would you like me to add features like gift wrapping options or custom engraving requests?"
+
+---
+
+## 💰 Cost Analysis
+
+### Per Conversation (Typical Website Generation):
+
+| Component | Model | Tokens | Cost |
+|-----------|-------|--------|------|
+| **Conversation** (Groq) | Llama 3.3 70B | ~5,000 | **$0.00** (Free!) |
+| **Research** (OpenRouter) | Perplexity Sonar | ~5,000 | $0.02 |
+| **PRD** (OpenRouter) | Claude 3.5 Sonnet | ~8,000 | $0.03 |
+| **User Stories** (OpenRouter) | Claude 3.5 Sonnet | ~6,000 | $0.02 |
+| **Tasks** (OpenRouter) | Gemini Flash | ~5,000 | $0.001 |
+| **Code** (OpenRouter) | Gemini Flash | ~15,000 | $0.002 |
+| **Total** | | **~44,000** | **~$0.073** |
+
+### Monthly Estimates:
+
+| Usage | Conversations | Cost (Groq) | Cost (OpenRouter) | **Total** |
+|-------|---------------|-------------|-------------------|-----------|
+| Light (100/mo) | Free | $0 | $7.30 | **$7.30** |
+| Medium (500/mo) | Free | $0 | $36.50 | **$36.50** |
+| Heavy (1000/mo) | Free | $0 | $73.00 | **$73.00** |
+
+**Key Advantage:** Groq is completely free for conversation, you only pay OpenRouter for actual work!
+
+---
+
+## 🎯 Benefits of This Architecture
+
+### 1. **Best of Both Worlds**
+- ✅ Free, fast conversation with Groq
+- ✅ Specialized models for specific tasks
+- ✅ Natural reasoning and explanations
+
+### 2. **Cost Optimization**
+- ✅ Groq: Free unlimited conversation
+- ✅ OpenRouter: Pay only for tool execution
+- ✅ Smart model selection per task
+
+### 3. **Quality**
+- ✅ Claude for complex reasoning (PRD, planning)
+- ✅ Gemini Flash for fast code generation
+- ✅ Perplexity for research
+
+### 4. **User Experience**
+- ✅ Natural conversation
+- ✅ Explains all decisions
+- ✅ Iterative refinement
+- ✅ Context-aware
+
+---
+
+## 🐛 Troubleshooting
+
+### Issue 1: "Groq API Key Invalid"
+
+**Solution:**
+```bash
+# Verify key
+echo $GROQ_API_KEY
+
+# Get new key from https://console.groq.com/
+```
+
+### Issue 2: "Tool execution failed"
+
+**Solution:**
+- Check OpenRouter API key
+- Verify OpenRouter has credits
+- Check MCP server is running
+
+### Issue 3: "Conversation not streaming"
+
+**Solution:**
+- Use `/chat/stream` endpoint
+- Ensure SSE headers are set
+- Check browser console for errors
+
+---
+
+## 🎉 Summary
+
+You now have a **fully conversational AI website builder** with:
+
+✅ **Groq** for natural conversation (FREE!)  
+✅ **OpenRouter** with specialized models for each tool  
+✅ **MCP Tools** for actual code generation  
+✅ **ChatGPT-like experience** with reasoning  
+✅ **Smart model selection** for optimal cost/quality  
+✅ **Real-time streaming** responses  
+✅ **Context-aware** multi-turn conversations  
+
+**Total cost: ~$0.07 per website generated (OpenRouter only, Groq is free!)**
+
+The AI explains its reasoning, asks clarifying questions, and provides a natural conversational experience while using the best models for each specific task!
